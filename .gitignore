@@ -1,0 +1,7 @@
+notebooks/data
+notebooks/wandb
+notebooks/models
+notebooks/__pycache__
+vscode-server
+.env
+
