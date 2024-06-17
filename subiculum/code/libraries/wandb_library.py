@@ -20,28 +20,20 @@ from digital_twin_library import ConvModel, train_epoch, get_correlations
 from neuralpredictors.measures.modules import PoissonLoss 
 from Neural_Lib_Flo import *
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
-
-PROJECT = "V1 Training 04-06-2024"
-
-# %%
 def load_data():
     images_path = '/project/subiculum/data/images_uint8.npy'
     responses_path = '/project/subiculum/data/V1_Data.mat'
     train_loader, val_loader, test_loader = dataloader_from_mat(images_path, responses_path, 75, 125, 64)
     return train_loader, val_loader, test_loader
 
-# %%
 def configure_model(config, n_neurons):
     model = ConvModel(layers=config.layers, 
-                      input_kern=config.input_kern, 
-                      hidden_kern=config.hidden_kern, 
-                      hidden_channels=config.hidden_channels, 
-                      spatial_scale = config.spatial_scale, 
-                      std_scale = config.std_scale,
-                      output_dim=n_neurons)
+                    input_kern=config.input_kern, 
+                    hidden_kern=config.hidden_kern, 
+                    hidden_channels=config.hidden_channels, 
+                    spatial_scale = config.spatial_scale, 
+                    std_scale = config.std_scale,
+                    output_dim=n_neurons)
     return model
 
 
@@ -93,29 +85,31 @@ def main():
             wandb.log({"val corr": vcorr, "epoch": epoch + 1})
             wandb.log({"train corr": tcorr, "epoch": epoch + 1})
 
+def sweep(model, train_loader, test_loader, vali, PROJECT):
 
-# 2: Define the search space
-sweep_configuration = {
-    "method": "bayes",
-    "name": "Gaussian Readout Hyperparameter Optimization",
-    "metric": {"goal": "maximize", "name": "validation correlation"},
-    "parameters": {
-        "learning_rate": {"min": 1e-4, "max": 0.1},
-        "layers": {"values": [1, 3, 5]},
-        "epochs": {"values": [20, 30, 50, 100]},
-        "input_kern": {"values": [5, 7, 11]},
-        "hidden_kern": {"values": [5, 7, 11]},
-        "hidden_channels": {"values": [32, 64, 128]},
-        "spatial_scale": {"min": 0.05, "max": 0.3},
-        "std_scale": {"min": 0.1, "max": 1.},
-    },
-}
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-if __name__ == "__main__":
-    # 3: Start the sweep
-    if len(sys.argv) == 1:
-        sweep_id = wandb.sweep(sweep=sweep_configuration, project=PROJECT)
-    else:
-        sweep_id = sys.argv[1]
-    wandb.agent(sweep_id, function=main, count=50, project=PROJECT)
+    # 2: Define the search space
+    sweep_configuration = {
+        "method": "bayes",
+        "name": "Gaussian Readout Hyperparameter Optimization",
+        "metric": {"goal": "maximize", "name": "validation correlation"},
+        "parameters": {
+            "learning_rate": {"min": 1e-4, "max": 0.1},
+            "layers": {"values": [1, 3, 5]},
+            "epochs": {"values": [20, 30, 50, 100]},
+            "input_kern": {"values": [5, 7, 11]},
+            "hidden_kern": {"values": [5, 7, 11]},
+            "hidden_channels": {"values": [32, 64, 128]},
+            "spatial_scale": {"min": 0.05, "max": 0.3},
+            "std_scale": {"min": 0.1, "max": 1.},
+        },
+    }
 
+    if __name__ == "__main__":
+        # 3: Start the sweep
+        if len(sys.argv) == 1:
+            sweep_id = wandb.sweep(sweep=sweep_configuration, project=PROJECT)
+        else:
+            sweep_id = sys.argv[1]
+        wandb.agent(sweep_id, function=main, count=50, project=PROJECT)

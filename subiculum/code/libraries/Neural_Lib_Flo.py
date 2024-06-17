@@ -47,7 +47,7 @@ class NeuralDataset(Dataset):
         
         return image, response
     
-class NeuralDatasetSensorium(Dataset):
+class NeuralDatasetSensorium_Pretraining(Dataset):
     def __init__(self, images, responses, transform=None):
         """
         Args:
@@ -76,7 +76,7 @@ class NeuralDatasetSensorium(Dataset):
         
         return image, response
     
-class NeuralDatasetV1(Dataset):
+class NeuralDatasetV1_Pretraining(Dataset):
     def __init__(self, images, responses, transform=None):
         """
         Args:
@@ -202,7 +202,7 @@ class CustomTransform:
         return resized_img.squeeze(0)  # Remove batch dimension if added
     
 
-def dataloader_from_npy(root_dir, device):
+def dataloader_from_npy_pretraining(root_dir, device):
     # Initialize lists to collect data
     responses_list = []
     images_list = []
@@ -250,7 +250,51 @@ def dataloader_from_npy(root_dir, device):
     pretrain_test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
     return pretrain_train_loader, pretrain_val_loader, pretrain_test_loader
 
+def dataloader_from_npy_pretraining_as_square(root_dir, device):
+    # Initialize lists to collect data
+    responses_list = []
+    images_list = []
 
+    # Load the data
+    for n in range(5994):
+        image_path = os.path.join(root_dir, 'images', f'{n}.npy')
+        response_path = os.path.join(root_dir, 'responses', f'{n}.npy')
+        
+        response_data = np.load(response_path)
+        image_data = np.load(image_path)
+        
+        # Ensure image is grayscale
+        if image_data.ndim == 3 and image_data.shape[0] == 3:
+            image_data = np.mean(image_data, axis=0, keepdims=True)
+        
+        responses_list.append(response_data)
+        images_list.append(image_data)
+        
+    # Convert lists to NumPy arrays
+    sensorium_responses = np.array(responses_list)
+    sensorium_images = np.array(images_list).astype('uint8').squeeze()
+
+    # Optionally convert to PyTorch tensors
+    sensorium_responses_tensor = torch.tensor(sensorium_responses, device=device)
+    #sensorium_images_tensor = torch.tensor(sensorium_images, device=device)
+
+    # Apply the custom transform
+    pretrain_transform = CustomTransform()
+    transformed_sensorium_images = torch.stack([pretrain_transform(img) for img in sensorium_images_tensor]).squeeze()
+    transformed_sensorium_images_np = transformed_sensorium_images.cpu().numpy().astype('uint8')
+    print(f'transformed images in np shape {transformed_sensorium_images_np.shape}')
+    pretrain_train_ratio=0.8
+    pretrain_val_ratio=0.1
+    pretrain_dataset = NeuralDataset(sensorium_images, sensorium_responses_tensor)
+    pretrain_total_size = len(pretrain_dataset)
+    pretrain_train_size = int(pretrain_train_ratio * pretrain_total_size)
+    pretrain_val_size = int(pretrain_val_ratio * pretrain_total_size)
+    pretrain_test_size = pretrain_total_size - pretrain_train_size - pretrain_val_size
+    pretrain_train_dataset, val_dataset, test_dataset = random_split(pretrain_dataset, [pretrain_train_size, pretrain_val_size, pretrain_test_size])
+    pretrain_train_loader = DataLoader(pretrain_train_dataset, batch_size=32, shuffle=True)
+    pretrain_val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    pretrain_test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    return pretrain_train_loader, pretrain_val_loader, pretrain_test_loader
 
 
 
@@ -296,6 +340,10 @@ class GaussianReadout(nn.Module):
         x = torch.einsum('bcn,nc->bn', x, self.linear) + self.bias.view(1, -1)
         return x
 
+
+"""
+Defining the model
+"""
     
 class ConvModel(nn.Module):
     def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5):
