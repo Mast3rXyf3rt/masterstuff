@@ -1,9 +1,9 @@
 version: '3.4'
 
 services:
-  jupyterlab:
+  dev:
     image: sensorium
-    container_name: ditial_twin_course    
+    container_name: flo_container    
     build:
       context: .
     volumes:
@@ -11,14 +11,15 @@ services:
       - ./notebooks:/notebooks
       - ./data:/notebooks/data
       - ./vscode-server:/root/.vscode-server
-    environment:
-      - JUPYTER_PASSWORD=aslkdjasdkas
-    env_file:
-      - ./.env
-    deploy:
-      resources:
-        reservations:
-          devices:
-          - driver: nvidia
-            device_ids: ['7']
-            capabilities: [gpu]
+    #environment:
+    #  - JUPYTER_PASSWORD=aslkdjasdkas
+    #env_file:
+    #  - ./.env
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #       - driver: nvidia
+    #         device_ids: ['7']
+    #         capabilities: [gpu]
+    entrypoint: /bin/bash -c "sleep infinity"
