@@ -1,4 +1,4 @@
-from Neural_Lib_Flo import *
+from libraries/Neural_Lib_Flo import *
 import wandb
 api=wandb.Api()
 run = api.run("seifertflo/V1 Training 04-06-2024/4shpdtsc")
