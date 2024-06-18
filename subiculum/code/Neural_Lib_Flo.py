@@ -610,13 +610,13 @@ def find_duplicate_images(images):
 
 
 
-
-
-# DataLoader
-
-# TrainingLoop(w. saving or no saving)
-
-# ValidationLoop
-
-# Oracle compute
+def configure_model(config, n_neurons, device):
+    model = ConvModel(layers=config.get("layers"), 
+                      input_kern=config.get("input_kern"), 
+                      hidden_kern=config.get("hidden_kern"), 
+                      hidden_channels=config.get("hidden_channels"), 
+                      spatial_scale = config.get("spatial_scale"), 
+                      std_scale = config.get("std_scale"),
+                      output_dim=n_neurons)
+    return model.to(device)
 
