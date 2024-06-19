@@ -1,11 +1,14 @@
 notebooks/
 notebooks/wandb
 notebooks/models
+subiculum
 notebooks/__pycache__
 data/
-subiculum/code/__pycache__
+/project/subiculum/code/__pycache__
 subiculum/code/models
+code/models
 wandb/
+/project/subiculum/code/models
 vscode-server
 .env
 git 
