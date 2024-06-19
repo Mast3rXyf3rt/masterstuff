@@ -829,3 +829,39 @@ def configure_model(config, n_neurons, device):
                       std_scale = config.get("std_scale"),
                       output_dim=n_neurons)
     return model.to(device)
+
+
+
+def sta_wo_model(best, data_path_1, data_path_2= None, data_is_npy = True, device=device):
+    if data_is_npy==True:
+        responses_list = []
+        images_list = []
+        # Load the data
+        for n in range(5994):
+            image_path = os.path.join(data_path_1, 'images', f'{n}.npy')
+            response_path = os.path.join(data_path_1, 'responses', f'{n}.npy')
+            
+            response_data = np.load(response_path)
+            image_data = np.load(image_path)
+            
+            # Ensure image is grayscale
+            if image_data.ndim == 3 and image_data.shape[0] == 3:
+                image_data = np.mean(image_data, axis=0, keepdims=True)
+            
+            responses_list.append(response_data)
+            images_list.append(image_data)
+            # Convert lists to NumPy arrays
+        sensorium_responses = torch.tensor(np.array(responses_list), device)
+        sensorium_images = torch.tensor(np.array(images_list).astype('uint8').squeeze(), device)
+        print(sensorium_respones.shape)
+    
+    
+    
+    
+    
+    else:
+        responses = torch.tensor(np.array(load_mat_file(data_path_1)), device)
+        images = torch.tensor(np.load(data_path_2), device)
+        print(responses.shape)
+
+
