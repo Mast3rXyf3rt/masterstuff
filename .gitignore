@@ -3,6 +3,7 @@ notebooks/wandb
 notebooks/models
 notebooks/__pycache__
 data/
+code/__pycache__
 wandb/
 vscode-server
 .env

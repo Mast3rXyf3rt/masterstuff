@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Import functions and classes from the libraries
-from fundamental_library import *
+from subiculum.code.libraries.fundamental_libraryaries.fundamental_library import *
 from digital_twin_library import ConvModel, train_epoch, get_correlations
 from neuralpredictors.measures.modules import PoissonLoss 
 

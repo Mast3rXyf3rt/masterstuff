@@ -18,6 +18,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from Neural_Lib_Flo import *
 import wandb
+from tqdm.notebook import trange, tqdm
 
 
 def evaluate_model(model, test_loader, device):
@@ -46,21 +47,20 @@ def evaluate_model(model, test_loader, device):
     
     return all_preds, all_resps
 
-def training_and_eval(model, epochs, train_loader, test_loader, val_loader, device, save_model= False, path_for_saving=None, early_stopping=True):
+def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_loader, device, save_model= False, lr=1e-1, gamma=1e-3, path_for_saving=None, early_stopping=True):
     # Define loss function and optimizer
     poisson_loss = PoissonLoss()
-    gamma = 1e-3
     loss_fn = lambda outputs, targets: poisson_loss(outputs, targets) + gamma * model.regularizer()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-1)
+    optimizer = torch.optim.Adam(model.parameters(), lr)
 
     # Define the learning rate schedule
     lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
     early_stopping_patience = 5
     early_stopping_counter = 0
     best_val_loss = float('-inf')
-    for epoch in range(epochs):
+    for epoch in trange(epochs):
         # Training loop
-        loss = train_epoch(model, train_loader, optimizer, loss_fn, device)
+        loss = my_train_epoch(model, train_loader, optimizer, loss_fn, device)
         
         # Validation loop
         with torch.no_grad():
@@ -91,7 +91,7 @@ def training_and_eval(model, epochs, train_loader, test_loader, val_loader, devi
 
 
 def pretraining(model, train_loader, val_loader, epochs, optimizer, loss_fn, device):
-    print(f'shape in dataloader {next(iter(pretrain_train_loader))[0].shape}')
+    print(f'shape in dataloader {next(iter(train_loader))[0].shape}')
     # Define early stopping criteria
     early_stopping_patience = 5
     early_stopping_counter = 0
@@ -103,13 +103,13 @@ def pretraining(model, train_loader, val_loader, epochs, optimizer, loss_fn, dev
     #optimizer = torch.optim.Adam(pretrain_model.parameters(), lr=1e-3)
     # Define the learning rate schedule
     lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
-    for epoch in range(epochs):
+    for epoch in trange(epochs):
         # Training loop
-        loss = my_train_epoch(pretrain_model, pretrain_train_loader, optimizer, loss_fn, device)
+        loss = my_train_epoch(pretrain_model, train_loader, optimizer, loss_fn, device)
         
         # Validation loop
         with torch.no_grad():
-            val_corrs = get_correlations(pretrain_model, pretrain_val_loader, device)
+            val_corrs = get_correlations(pretrain_model, val_loader, device)
         validation_correlation = val_corrs.mean()
         
         # Update learning rate schedule
@@ -142,7 +142,7 @@ def train_readout(model, train_loader, val_loader, num_epochs, optimizer, loss_f
     best_val_loss = float('-inf')
     lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
 
-    for epoch in range(num_epochs):
+    for epoch in trange(num_epochs):
         model.readout.train()
         train_loss = 0.0
         for images, responses in train_loader:
@@ -225,3 +225,5 @@ def oracle(model, model_state_path, device, test_loader):
         ylim=[0, 1],
         aspect='equal',
     )
+
+    

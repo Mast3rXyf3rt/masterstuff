@@ -15,16 +15,14 @@ import sys
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Import functions and classes from the libraries
-from fundamental_library import *
-from digital_twin_library import ConvModel, train_epoch, get_correlations
 from neuralpredictors.measures.modules import PoissonLoss 
-from Neural_Lib_Flo import *
+from subiculum.code.Neural_Lib_Flo import *
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 
-PROJECT = "V1 Training 04-06-2024"
+PROJECT = "V1 Training 17-06-2024"
 
 # %%
 def load_data():
@@ -70,7 +68,7 @@ def train(config, model, train_loader, val_loader, device):
 def objective(config, seed=42):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    train_loader, val_loader, test_loader = load_data(config)
+    train_loader, val_loader, test_loader = load_data()
     set_random_seed(seed)
     model = configure_model(config, n_neurons=13) 
     model.to(device)
@@ -117,5 +115,5 @@ if __name__ == "__main__":
         sweep_id = wandb.sweep(sweep=sweep_configuration, project=PROJECT)
     else:
         sweep_id = sys.argv[1]
-    wandb.agent(sweep_id, function=main, count=50, project=PROJECT)
+    wandb.agent(sweep_id, function=main, count=20, project=PROJECT)
 
