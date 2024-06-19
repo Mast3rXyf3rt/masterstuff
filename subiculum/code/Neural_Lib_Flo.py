@@ -12,10 +12,12 @@ import warnings
 from neuralpredictors.measures.modules import PoissonLoss
 import seaborn as sns
 from tqdm.notebook import trange
+import matplotlib.pyplot as plt
 
 #This Library is supposed to include two DataLoader, one that can load images from .npy files for the Sensorium data, one that can load them from .mat files for the V1 and postsub data
 # Also, it will include an implementation of the loss functions, models, correlation, oracle prediction and Gaussian readout which will be thoroughly documented, so people can actually understand what they are doing.
-
+# Set the device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 # DataSet
@@ -388,6 +390,7 @@ def train_epoch(model, loader, optimizer, loss_fn, device):
         optimizer.step()
     return loss
 
+# train_epoch returns the loss of the last item in the batch, this seems very prone to errors due to outliers.
 
 def my_train_epoch(model, loader, optimizer, loss_fn,device):
     model.train()
@@ -397,6 +400,10 @@ def my_train_epoch(model, loader, optimizer, loss_fn,device):
         optimizer.zero_grad()
         outputs = model(images)
         loss = loss_fn(outputs, responses)
+        # if loss.item() < 0:
+        #     print(f"Negative loss detected: {loss.item()}")
+        #     print(f"Outputs: {outputs}")
+        #     print(f"Responses: {responses}")
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
@@ -484,7 +491,7 @@ def evaluate_model(model, test_loader, device):
     test_loss = 0.0
     all_preds = []
     all_resps = []
-    loss_fn = nn.PoissonNLLLoss(log_input=False)
+    loss_fn = PoissonLoss()
     
     with torch.no_grad():
         for images, responses in test_loader:
@@ -553,47 +560,47 @@ def oracle(model, model_state_path, device, test_loader):
     )
 
 
-def train_and_eval(model, epochs, train_loader, test_loader, val_loader, device,lr=1e-1, gamma=1e-3, save_model= False, path_for_saving=None, early_stopping=True):
-    # Define loss function and optimizer
-    poisson_loss = PoissonLoss()
-    loss_fn = lambda outputs, targets: poisson_loss(outputs, targets) + gamma * model.regularizer()
-    optimizer = torch.optim.Adam(model.parameters(), lr)
+# def train_and_eval(model, epochs, train_loader, test_loader, val_loader, device,lr=1e-1, gamma=1e-3, save_model= False, path_for_saving=None, early_stopping=True):
+#     # Define loss function and optimizer
+#     poisson_loss = PoissonLoss()
+#     loss_fn = lambda outputs, targets: poisson_loss(outputs, targets) + gamma * model.regularizer()
+#     optimizer = torch.optim.Adam(model.parameters(), lr)
 
-    # Define the learning rate schedule
-    lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
-    early_stopping_patience = 5
-    early_stopping_counter = 0
-    best_val_loss = float('-inf')
-    for epoch in range(epochs):
-        # Training loop
-        loss = train_epoch(model, train_loader, optimizer, loss_fn, device)
+#     # Define the learning rate schedule
+#     lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
+#     early_stopping_patience = 5
+#     early_stopping_counter = 0
+#     best_val_loss = float('-inf')
+#     for epoch in range(epochs):
+#         # Training loop
+#         loss = train_epoch(model, train_loader, optimizer, loss_fn, device)
         
-        # Validation loop
-        with torch.no_grad():
-            val_corrs = get_correlations(model, val_loader, device)
-        validation_correlation = val_corrs.mean()
+#         # Validation loop
+#         with torch.no_grad():
+#             val_corrs = get_correlations(model, val_loader, device)
+#         validation_correlation = val_corrs.mean()
         
-        # Update learning rate schedule
-        lr_scheduler.step(validation_correlation)
+#         # Update learning rate schedule
+#         lr_scheduler.step(validation_correlation)
         
-        # Print training and validation losses
-        print(f'Epoch [{epoch+1}/{epochs}], validation correlation: {validation_correlation:.4f}, trainloss: {loss:.4f}')
+#         # Print training and validation losses
+#         print(f'Epoch [{epoch+1}/{epochs}], validation correlation: {validation_correlation:.4f}, trainloss: {loss:.4f}')
         
-        # Check for early stopping
-        if early_stopping==True:
-            if validation_correlation > best_val_loss:
-                best_val_loss = validation_correlation
-                early_stopping_counter = 0
-            else:
-                early_stopping_counter += 1
-                if early_stopping_counter >= early_stopping_patience:
-                    print('Early stopping triggered!')
-                    break
-    if save_model==True:
-        torch.save(model.state_dict(), path_for_saving)
-        print("model saved as" + path_for_saving)
-    # Evaluate the model
-    evaluate_model(model, test_loader, device)
+#         # Check for early stopping
+#         if early_stopping==True:
+#             if validation_correlation > best_val_loss:
+#                 best_val_loss = validation_correlation
+#                 early_stopping_counter = 0
+#             else:
+#                 early_stopping_counter += 1
+#                 if early_stopping_counter >= early_stopping_patience:
+#                     print('Early stopping triggered!')
+#                     break
+#     if save_model==True:
+#         torch.save(model.state_dict(), path_for_saving)
+#         print("model saved as" + path_for_saving)
+#     # Evaluate the model
+#     evaluate_model(model, test_loader, device)
 
 
 def find_duplicate_images(images):
@@ -619,7 +626,7 @@ def evaluate_model(model, test_loader, device):
     test_loss = 0.0
     all_preds = []
     all_resps = []
-    loss_fn = nn.PoissonNLLLoss(log_input=False)
+    loss_fn = PoissonLoss()
     
     with torch.no_grad():
         for images, responses in test_loader:
@@ -830,9 +837,22 @@ def configure_model(config, n_neurons, device):
                       output_dim=n_neurons)
     return model.to(device)
 
+def downscale_images_in_batches(images, batch_size=50):  # Reduced batch size
+    downscaled_images = []
+    num_batches = len(images) // batch_size + (1 if len(images) % batch_size != 0 else 0)
+    
+    for i in range(num_batches):
+        batch = images[i * batch_size:(i + 1) * batch_size]
+        batch_tensor = torch.tensor(batch, dtype=torch.float32).to(device)
+        downscaled_batch = F.interpolate(batch_tensor.unsqueeze(1), size=(64, 64), mode='bilinear', align_corners=False)
+        downscaled_batch = downscaled_batch.squeeze(1).cpu().numpy()
+        downscaled_images.append(downscaled_batch)
+        del batch_tensor, downscaled_batch  # Clear GPU memory
+        torch.cuda.empty_cache()  # Free up unused memory
+    
+    return np.concatenate(downscaled_images, axis=0)
 
-
-def sta_wo_model(best, data_path_1, data_path_2= None, data_is_npy = True, device=device):
+def sta_wo_model(device, best, data_path_1, data_path_2= None, data_is_npy = True, index_start=75, index_end=125):
     if data_is_npy==True:
         responses_list = []
         images_list = []
@@ -851,17 +871,87 @@ def sta_wo_model(best, data_path_1, data_path_2= None, data_is_npy = True, devic
             responses_list.append(response_data)
             images_list.append(image_data)
             # Convert lists to NumPy arrays
-        sensorium_responses = torch.tensor(np.array(responses_list), device)
-        sensorium_images = torch.tensor(np.array(images_list).astype('uint8').squeeze(), device)
-        print(sensorium_respones.shape)
-    
-    
-    
-    
-    
-    else:
-        responses = torch.tensor(np.array(load_mat_file(data_path_1)), device)
-        images = torch.tensor(np.load(data_path_2), device)
-        print(responses.shape)
+        sensorium_responses = torch.tensor(np.array(responses_list).astype('float32')).to(device)
+        sensorium_images = torch.tensor(np.array(images_list).astype('float32').squeeze()).to(device)
+        print("Shows the STA for the best neurons (in terms of correlation on the validation loader):")
+        fig, axs = plt.subplots(2,5, figsize=(15,9))
+        axs=axs.flatten()
+        print(sensorium_responses[:,best[0]].shape)
+        for i in range (10):
+            print(f"Processing neuron {best[i]}...")
+            STA_img=torch.einsum('j,jkl->kl', sensorium_responses[:,best[i]]/torch.sum(sensorium_responses[:,i],axis=0),sensorium_images).cpu().numpy()
+            im=axs[i].imshow(STA_img, cmap='gray')
+            axs[i].set_title(f'STA neuron {best[i]}')
+            axs[i].axis('off')
+        for j in range(10, len(axs)):
+            fig.delaxes(axs[j])
+        fig.colorbar(im, ax=axs, orientation='horizontal', fraction=0.02, pad=0.04)
+        plt.tight_layout()
+        plt.show()
 
+    else:
+        responses,_,_=load_mat_file(data_path_1)
+        responses = torch.tensor(np.sum(responses[:,:, index_start:index_end], axis=2).astype('float32')).to(device)
+        images = torch.tensor(np.load(data_path_2)).to(device)
+        images= torch.tensor(downscale_images_in_batches(images, batch_size=1)).to(device)
+        print(images.shape)
+        print(responses.shape)
+        fig, axs = plt.subplots(2,5, figsize=(7,7))
+        axs=axs.flatten()
+        for i in range (10):
+            im=axs[i].imshow(torch.einsum('j,jkl->kl', responses[best[i],:]/torch.sum(responses[best[i],:],axis=0),images).cpu().numpy(), cmap='gray')
+            axs[i].set_title(f'STA neuron {best[i]}')
+            axs[i].axis('off')
+        for j in range(10, len(axs)):
+            fig.delaxes(axs[j])
+        plt.tight_layout()
+        plt.show()
+
+def STA_model_sens(model, model_path, best):
+    state_dict = torch.load(model_path)
+    model.load_state_dict(state_dict)
+    model.to(device)
+    imgs, responses = [], []
+    idx = best[:12]
+    for _ in range(500):
+        noise = torch.randn(100, 1, 36, 64).to(device)
+        with torch.no_grad():
+            resp = model(noise).cpu().numpy()[:, idx]
+        responses.append(resp)
+        imgs.append(noise.cpu().numpy())
+    imgs = np.concatenate(imgs, axis=0)
+    responses = np.concatenate(responses, axis=0)
+    responses = (responses - responses.mean(axis=0)) / responses.std(axis=0)
+    stas = (imgs * responses[..., None, None]).mean(axis=0)
+
+    with sns.axes_style('white'):
+        fig, ax = plt.subplots(4, 3, figsize=(16, 12))
+        for i, sta, a in zip(best, stas, ax.flatten()):
+            a.imshow(sta.squeeze(), cmap='gray')
+            a.axis('off')
+            a.set_title(f'STA neuron {i}')
+
+def STA_model(model, model_path, best):
+    state_dict = torch.load(model_path)
+    model.load_state_dict(state_dict)
+    model.to(device)
+    imgs, responses = [], []
+    idx = best[:12]
+    for _ in range(500):
+        noise = torch.randn(100, 1, 64, 64).to(device)
+        with torch.no_grad():
+            resp = model(noise).cpu().numpy()[:, idx]
+        responses.append(resp)
+        imgs.append(noise.cpu().numpy())
+    imgs = np.concatenate(imgs, axis=0)
+    responses = np.concatenate(responses, axis=0)
+    responses = (responses - responses.mean(axis=0)) / responses.std(axis=0)
+    stas = (imgs * responses[..., None, None]).mean(axis=0)
+
+    with sns.axes_style('white'):
+        fig, ax = plt.subplots(4, 3, figsize=(16, 12))
+        for i, sta, a in zip(best, stas, ax.flatten()):
+            a.imshow(sta.squeeze(), cmap='gray')
+            a.axis('off')
+            a.set_title(f'STA neuron {i}')
 

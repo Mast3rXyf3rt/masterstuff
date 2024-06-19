@@ -49,7 +49,7 @@ def evaluate_model(model, test_loader, device):
 
 def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_loader, device, save_model= False, lr=1e-1, gamma=1e-3, path_for_saving=None, early_stopping=True):
     # Define loss function and optimizer
-    poisson_loss = PoissonLoss()
+    poisson_loss = PoissonLoss(bias=1e-7)
     loss_fn = lambda outputs, targets: poisson_loss(outputs, targets) + gamma * model.regularizer()
     optimizer = torch.optim.Adam(model.parameters(), lr)
 
@@ -105,7 +105,7 @@ def pretraining(model, train_loader, val_loader, epochs, optimizer, loss_fn, dev
     lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
     for epoch in trange(epochs):
         # Training loop
-        loss = my_train_epoch(pretrain_model, train_loader, optimizer, loss_fn, device)
+        loss = train_epoch(pretrain_model, train_loader, optimizer, loss_fn, device)
         
         # Validation loop
         with torch.no_grad():
