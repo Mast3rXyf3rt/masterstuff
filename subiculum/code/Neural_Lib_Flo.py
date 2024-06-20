@@ -13,6 +13,7 @@ from neuralpredictors.measures.modules import PoissonLoss
 import seaborn as sns
 from tqdm.notebook import trange
 import matplotlib.pyplot as plt
+from neuralpredictors.layers.readouts.factorized import FullFactorized2d
 
 #This Library is supposed to include two DataLoader, one that can load images from .npy files for the Sensorium data, one that can load them from .mat files for the V1 and postsub data
 # Also, it will include an implementation of the loss functions, models, correlation, oracle prediction and Gaussian readout which will be thoroughly documented, so people can actually understand what they are doing.
@@ -349,7 +350,7 @@ Defining the model
 """
     
 class ConvModel(nn.Module):
-    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5):
+    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True):
         super(ConvModel, self).__init__()
         
         self.conv_layers = nn.Sequential()
@@ -365,10 +366,18 @@ class ConvModel(nn.Module):
         self.core = nn.Sequential(*core_layers)
         
         # self.readout = FullGaussian2d((32, 18, 46), output_dim, bias=False)
-        
-        self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
-        
+        if gaussian_readout ==True:
+            self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
+        else:
+            self.readout = FullFactorized2d(
+                in_shape=(hidden_channels, 52, 52),  # Set the appropriate shape
+                outdims=output_dim,
+                bias=True,
+                spatial_and_feature_reg_weight=1.0)
+    
     def regularizer(self):
+        if isinstance(self.readout, FullFactorized2d):
+            return self.readout.regularizer()
         return self.readout.linear.abs().mean()
         
     def forward(self, x):
@@ -827,14 +836,15 @@ def oracle(model, model_state_path, device, test_loader):
         aspect='equal',
     )
 
-def configure_model(config, n_neurons, device):
+def configure_model(config, n_neurons, device, gaussian_readout=True):
     model = ConvModel(layers=config.get("layers"), 
                       input_kern=config.get("input_kern"), 
                       hidden_kern=config.get("hidden_kern"), 
                       hidden_channels=config.get("hidden_channels"), 
                       spatial_scale = config.get("spatial_scale"), 
                       std_scale = config.get("std_scale"),
-                      output_dim=n_neurons)
+                      output_dim=n_neurons,
+                      gaussian_readout=gaussian_readout)
     return model.to(device)
 
 def downscale_images_in_batches(images, batch_size=50):  # Reduced batch size
@@ -874,10 +884,10 @@ def sta_wo_model(device, best, data_path_1, data_path_2= None, data_is_npy = Tru
         sensorium_responses = torch.tensor(np.array(responses_list).astype('float32')).to(device)
         sensorium_images = torch.tensor(np.array(images_list).astype('float32').squeeze()).to(device)
         print("Shows the STA for the best neurons (in terms of correlation on the validation loader):")
-        fig, axs = plt.subplots(2,5, figsize=(15,9))
+        fig, axs = plt.subplots(4,3, figsize=(15,9))
         axs=axs.flatten()
         print(sensorium_responses[:,best[0]].shape)
-        for i in range (10):
+        for i in range (12):
             print(f"Processing neuron {best[i]}...")
             STA_img=torch.einsum('j,jkl->kl', sensorium_responses[:,best[i]]/torch.sum(sensorium_responses[:,i],axis=0),sensorium_images).cpu().numpy()
             im=axs[i].imshow(STA_img, cmap='gray')
@@ -896,13 +906,13 @@ def sta_wo_model(device, best, data_path_1, data_path_2= None, data_is_npy = Tru
         images= torch.tensor(downscale_images_in_batches(images, batch_size=1)).to(device)
         print(images.shape)
         print(responses.shape)
-        fig, axs = plt.subplots(2,5, figsize=(7,7))
+        fig, axs = plt.subplots(4,3, figsize=(15,9))
         axs=axs.flatten()
-        for i in range (10):
+        for i in range (12):
             im=axs[i].imshow(torch.einsum('j,jkl->kl', responses[best[i],:]/torch.sum(responses[best[i],:],axis=0),images).cpu().numpy(), cmap='gray')
             axs[i].set_title(f'STA neuron {best[i]}')
             axs[i].axis('off')
-        for j in range(10, len(axs)):
+        for j in range(12, len(axs)):
             fig.delaxes(axs[j])
         plt.tight_layout()
         plt.show()
@@ -913,7 +923,7 @@ def STA_model_sens(model, model_path, best):
     model.to(device)
     imgs, responses = [], []
     idx = best[:12]
-    for _ in range(500):
+    for _ in range(1000):
         noise = torch.randn(100, 1, 36, 64).to(device)
         with torch.no_grad():
             resp = model(noise).cpu().numpy()[:, idx]
@@ -937,7 +947,7 @@ def STA_model(model, model_path, best):
     model.to(device)
     imgs, responses = [], []
     idx = best[:12]
-    for _ in range(500):
+    for _ in range(1000):
         noise = torch.randn(100, 1, 64, 64).to(device)
         with torch.no_grad():
             resp = model(noise).cpu().numpy()[:, idx]
@@ -955,3 +965,8 @@ def STA_model(model, model_path, best):
             a.axis('off')
             a.set_title(f'STA neuron {i}')
 
+def get_last_conv_out_channels(model):
+    for layer in reversed(model.core):
+        if isinstance(layer, nn.Conv2d):
+            return layer.out_channels
+    raise ValueError("No Conv2d layer found in the model.")

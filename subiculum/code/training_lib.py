@@ -85,9 +85,9 @@ def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_load
                     break
     if save_model==True:
         torch.save(model.state_dict(), path_for_saving)
-        print("model saved as" + path_for_saving)
+        print("model saved as " + path_for_saving)
     # Evaluate the model
-    evaluate_model(model, test_loader, device)
+    _,_ = evaluate_model(model, test_loader, device)
 
 
 def pretraining(model, train_loader, val_loader, epochs, optimizer, loss_fn, device):
