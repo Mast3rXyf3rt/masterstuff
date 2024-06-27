@@ -16,18 +16,18 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Import functions and classes from the libraries
 from neuralpredictors.measures.modules import PoissonLoss 
-from subiculum.code.Neural_Lib_Flo import *
+from Neural_Lib_Flo import *
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 
-PROJECT = "V1 Training 17-06-2024"
+PROJECT = "Sub ON response Training 26-06-2024"
 
 # %%
 def load_data():
     images_path = '/project/subiculum/data/images_uint8.npy'
-    responses_path = '/project/subiculum/data/V1_Data.mat'
+    responses_path = '/project/subiculum/data/Post_Sub_Data.mat'
     train_loader, val_loader, test_loader = dataloader_from_mat(images_path, responses_path, 75, 125, 64)
     return train_loader, val_loader, test_loader
 
@@ -70,7 +70,19 @@ def objective(config, seed=42):
 
     train_loader, val_loader, test_loader = load_data()
     set_random_seed(seed)
-    model = configure_model(config, n_neurons=13) 
+    model = configure_model(config, n_neurons=37) 
+    model.to(device)
+
+    train_corrs, val_corrs, log_epoch, vcorrs, tcorrs = train(config, model, train_loader, val_loader, device)
+
+    return train_corrs, val_corrs, model, log_epoch, vcorrs, tcorrs
+
+def objective_postsub(config, seed=42):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    train_loader, val_loader, test_loader = load_data()
+    set_random_seed(seed)
+    model = configure_model(config, n_neurons=37) 
     model.to(device)
 
     train_corrs, val_corrs, log_epoch, vcorrs, tcorrs = train(config, model, train_loader, val_loader, device)
@@ -115,5 +127,5 @@ if __name__ == "__main__":
         sweep_id = wandb.sweep(sweep=sweep_configuration, project=PROJECT)
     else:
         sweep_id = sys.argv[1]
-    wandb.agent(sweep_id, function=main, count=20, project=PROJECT)
+    wandb.agent(sweep_id, function=main, count=50, project=PROJECT)
 
