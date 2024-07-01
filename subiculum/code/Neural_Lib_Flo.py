@@ -370,7 +370,7 @@ class ConvModel(nn.Module):
             self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
         else:
             self.readout = FullFactorized2d(
-                in_shape=(hidden_channels, 52, 52),  # Set the appropriate shape
+                in_shape=(hidden_channels, 34, 34),  # Set the appropriate shape
                 outdims=output_dim,
                 bias=True,
                 spatial_and_feature_reg_weight=1.0)
@@ -386,6 +386,54 @@ class ConvModel(nn.Module):
         
         return nn.functional.softplus(x)
     
+class DepthwiseSeparableConv(nn.Module):
+    def __init__(self, n_in, n_out, kernel_size, padding=2):
+        super(DepthSepConvModel, self).__init__()
+        self.depthwise = nn.Conv2d(n_in, n_in, kernel_size, padding)
+        self.pointwise = nn.Conv2d(n_in, n_out, kernel_size_ptw= 1)
+    def forward(self, x):
+        out = self.depthwise(x)
+        out = self.pointwise(x)
+        return out
+    
+class DepthSepConvModel(nn.Module):
+    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True):
+        super(ConvModel, self).__init__()
+        
+        self.conv_layers = nn.Sequential()
+        core_layers = [nn.Conv2d(1, hidden_channels, input_kern, padding=2), nn.BatchNorm2d(hidden_channels), nn.SiLU()]
+        
+        for _ in range(layers - 1):
+            core_layers.extend([
+                DepthwiseSeparableConv(hidden_channels, hidden_channels, hidden_kern, padding=2),
+                nn.BatchNorm2d(hidden_channels),
+                nn.SiLU()
+            ]
+            )
+        self.core = nn.Sequential(*core_layers)
+        
+        # self.readout = FullGaussian2d((32, 18, 46), output_dim, bias=False)
+        if gaussian_readout ==True:
+            self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
+        else:
+            self.readout = FullFactorized2d(
+                in_shape=(hidden_channels, 34, 34),  # Set the appropriate shape
+                outdims=output_dim,
+                bias=True,
+                spatial_and_feature_reg_weight=1.0)
+    
+    def regularizer(self):
+        if isinstance(self.readout, FullFactorized2d):
+            return self.readout.regularizer()
+        return self.readout.linear.abs().mean()
+        
+    def forward(self, x):
+        x = self.core(x)
+        x = self.readout(x)
+        
+        return nn.functional.softplus(x)
+
+
 
 
 def train_epoch(model, loader, optimizer, loss_fn, device):
@@ -970,3 +1018,40 @@ def get_last_conv_out_channels(model):
         if isinstance(layer, nn.Conv2d):
             return layer.out_channels
     raise ValueError("No Conv2d layer found in the model.")
+
+
+def get_last_conv_output_shape(model, input_shape):
+    def get_output_shape(layer, input_shape):
+        dummy_input = torch.zeros(*input_shape)
+        dummy_output = layer(dummy_input)
+        return dummy_output.shape
+    
+    last_conv_layer = None
+    for layer in model.core:
+        if isinstance(layer, nn.Conv2d):
+            last_conv_layer = layer
+    
+    if last_conv_layer is None:
+        raise ValueError("No Conv2d layer found in the model.")
+    
+    return get_output_shape(last_conv_layer, input_shape)
+
+def gradientRF(model, model_state_path, best_neurons, device):
+    state_dict = torch.load(model_state_path)
+    model.load_state_dict(state_dict)
+    model=model.to(device)
+    rfs = []
+    for i in best_neurons[:12]:
+        x = torch.zeros(1,1,64,64).to(device)
+        x.requires_grad = True
+        r = model(x)
+        r[0,i].backward()
+        rfs.append(x.grad.cpu().numpy().squeeze())
+    
+    with sns.axes_style('white'):
+        fig, ax = plt.subplots(4, 3, figsize=(12,12))
+        for i, rf, a in zip(range(len(rfs)), rfs, ax.flatten()):
+            a.imshow(rf.squeeze(), cmap = 'gray')
+            a.axis('off')
+            a.set_title(f'RF neuron {best_neurons[i]}')
+
