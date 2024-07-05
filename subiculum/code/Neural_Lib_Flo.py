@@ -121,6 +121,7 @@ def load_mat_file(file_path):
     return responses, stim_list, binsize
 
 def preprocess_responses(responses, time_begin, time_end):
+    responses=responses.astype(np.uint8)
     responses_p1 = torch.tensor(responses, dtype=torch.float32)
     responses_p2 = responses_p1.permute(1, 0, 2)
     responses_p3 = torch.sum(responses_p2[:,:,time_begin:time_end], dim=2)
@@ -350,7 +351,7 @@ Defining the model
 """
     
 class ConvModel(nn.Module):
-    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True):
+    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True, reg_weight=None, fact_input=None):
         super(ConvModel, self).__init__()
         
         self.conv_layers = nn.Sequential()
@@ -370,10 +371,10 @@ class ConvModel(nn.Module):
             self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
         else:
             self.readout = FullFactorized2d(
-                in_shape=(hidden_channels, 34, 34),  # Set the appropriate shape
+                in_shape=(hidden_channels, fact_input, fact_input),  # Set the appropriate shape
                 outdims=output_dim,
                 bias=True,
-                spatial_and_feature_reg_weight=1.0)
+                spatial_and_feature_reg_weight=reg_weight or 1.0)
     
     def regularizer(self):
         if isinstance(self.readout, FullFactorized2d):
@@ -388,19 +389,19 @@ class ConvModel(nn.Module):
     
 class DepthwiseSeparableConv(nn.Module):
     def __init__(self, n_in, n_out, kernel_size, padding=2):
-        super(DepthSepConvModel, self).__init__()
-        self.depthwise = nn.Conv2d(n_in, n_in, kernel_size, padding)
-        self.pointwise = nn.Conv2d(n_in, n_out, kernel_size_ptw= 1)
+        super(DepthwiseSeparableConv, self).__init__()
+        self.depthwise = nn.Conv2d(n_in, n_in, kernel_size, padding=padding, groups=n_in)
+        self.pointwise = nn.Conv2d(n_in, n_out, kernel_size= 1)
     def forward(self, x):
         out = self.depthwise(x)
-        out = self.pointwise(x)
+        out = self.pointwise(out)
         return out
     
 class DepthSepConvModel(nn.Module):
-    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True):
-        super(ConvModel, self).__init__()
+    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True, reg_weight=None, fact_input=None):
+        super(DepthSepConvModel, self).__init__()
         
-        self.conv_layers = nn.Sequential()
+        self.conv_layers = nn.Sequential
         core_layers = [nn.Conv2d(1, hidden_channels, input_kern, padding=2), nn.BatchNorm2d(hidden_channels), nn.SiLU()]
         
         for _ in range(layers - 1):
@@ -417,10 +418,10 @@ class DepthSepConvModel(nn.Module):
             self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
         else:
             self.readout = FullFactorized2d(
-                in_shape=(hidden_channels, 34, 34),  # Set the appropriate shape
+                in_shape=(hidden_channels, fact_input, fact_input),  # Set the appropriate shape
                 outdims=output_dim,
                 bias=True,
-                spatial_and_feature_reg_weight=1.0)
+                spatial_and_feature_reg_weight=reg_weight or 1.0)
     
     def regularizer(self):
         if isinstance(self.readout, FullFactorized2d):
@@ -884,7 +885,7 @@ def oracle(model, model_state_path, device, test_loader):
         aspect='equal',
     )
 
-def configure_model(config, n_neurons, device, gaussian_readout=True):
+def configure_model(config, n_neurons, device, gaussian_readout=True, reg_weight=None, fact_input=None):
     model = ConvModel(layers=config.get("layers"), 
                       input_kern=config.get("input_kern"), 
                       hidden_kern=config.get("hidden_kern"), 
@@ -892,7 +893,24 @@ def configure_model(config, n_neurons, device, gaussian_readout=True):
                       spatial_scale = config.get("spatial_scale"), 
                       std_scale = config.get("std_scale"),
                       output_dim=n_neurons,
-                      gaussian_readout=gaussian_readout)
+                      gaussian_readout=gaussian_readout,
+                      reg_weight=reg_weight,
+                      fact_input=fact_input
+                      )
+    return model.to(device)
+
+def configure_depth_sep_model(config, n_neurons, device, gaussian_readout=True, reg_weight=None, fact_input=None):
+    model = DepthSepConvModel(layers=config.get("layers"), 
+                      input_kern=config.get("input_kern"), 
+                      hidden_kern=config.get("hidden_kern"), 
+                      hidden_channels=config.get("hidden_channels"), 
+                      spatial_scale = config.get("spatial_scale"), 
+                      std_scale = config.get("std_scale"),
+                      output_dim=n_neurons,
+                      gaussian_readout=gaussian_readout,
+                      reg_weight=reg_weight,
+                      fact_input=fact_input
+                      )
     return model.to(device)
 
 def downscale_images_in_batches(images, batch_size=50):  # Reduced batch size
@@ -1055,3 +1073,57 @@ def gradientRF(model, model_state_path, best_neurons, device):
             a.axis('off')
             a.set_title(f'RF neuron {best_neurons[i]}')
 
+
+def plot_nth_image(train_loader,n):
+    for images, _ in train_loader:
+        first_image = images[n].cpu().numpy().squeeze()
+        plt.imshow(first_image, cmap='gray')
+        plt.title("First Image in the Train Loader")
+        plt.show()
+        break
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+def plot_avrg_response(images_path, response_path):
+    # Load Images to np.array
+    images = np.load(images_path)
+
+    # Load responses and preprocess them
+    responses, _, _ = load_mat_file(response_path)
+    responses = np.transpose(responses, (1, 2, 0))
+
+    # Look at mean data for neurons
+    responses_mean = np.mean(responses, axis=0, keepdims=True)
+
+    # Define the number of plots
+    num_plots = responses.shape[2]
+    neuron_indices = range(num_plots)
+
+    # Create a 3x5 grid of subplots
+    fig, axs = plt.subplots(int(np.ceil(float(num_plots)/5.0)),5, figsize=(15, 9))
+    axs = axs.flatten()  # Flatten the 2D array to 1D for easier iteration
+
+    # Create a custom legend patch
+    legend_patch = mpatches.Patch(color='gray', alpha=0.5, label='Image shown')
+
+    # Plot each neuron data
+    x = np.arange(0, 2000, 10)
+    for i, neuron_index in enumerate(neuron_indices):
+        if i < len(neuron_indices):  # Ensure we don't go out of bounds
+            neuron_mean = responses_mean[:, :, neuron_index]
+            axs[i].plot(x, neuron_mean[0, :])
+            axs[i].axvspan(750, 1250, color='gray', alpha=0.5)  # Add transparent gray tile
+            axs[i].set_title(f'Neuron {neuron_index + 1}')
+            axs[i].set_xlabel('Time (ms)')
+            axs[i].set_ylabel('Response')
+            # Add the legend to the first plot only to avoid repetition
+            if i == 0:
+                axs[i].legend(handles=[legend_patch])
+
+    # Remove empty subplots (if any)
+    for j in range(len(neuron_indices), len(axs)):
+        fig.delaxes(axs[j])
+
+    # Adjust layout
+    plt.tight_layout()
+    plt.show()
