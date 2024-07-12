@@ -114,16 +114,35 @@ class NeuralDatasetV1_Pretraining(Dataset):
 #Dataloader for .mat files
 
 def load_mat_file(file_path):
+    """
+    Returns responses in shape [n_neurons, n_images, n_timebins]
+    """
     data = scipy.io.loadmat(file_path)
     responses = data['responses']
-    stim_list = data['stim_list']
+    if 'stim_list' in data:
+        stim_list = data['stim_list']
+    else:
+        stim_list=[]
     binsize = data['binsize']
-    return responses, stim_list, binsize
+    if 'idx_cellType' in data:
+        idx_cellType = data['idx_cellType']
+        if 'labels' in data:
+            labels = data['labels']
+            return responses, stim_list, binsize, idx_cellType, labels
+        else:
+            return responses, stim_list, binsize, idx_cellType
+    else:
+        if 'labels' in data:
+            labels = data['labels']
+            return responses, stim_list, binsize, labels
+        else:
+            return responses, stim_list, binsize
 
 def preprocess_responses(responses, time_begin, time_end):
     responses=responses.astype(np.uint8)
     responses_p1 = torch.tensor(responses, dtype=torch.float32)
     responses_p2 = responses_p1.permute(1, 0, 2)
+    # transposes to [n_images, n_neurons, n_timebins]
     responses_p3 = torch.sum(responses_p2[:,:,time_begin:time_end], dim=2)
     return responses_p3
 
@@ -281,7 +300,7 @@ def dataloader_from_npy_pretraining_as_square(root_dir, device):
 
     # Optionally convert to PyTorch tensors
     sensorium_responses_tensor = torch.tensor(sensorium_responses, device=device)
-    #sensorium_images_tensor = torch.tensor(sensorium_images, device=device)
+    sensorium_images_tensor = torch.tensor(sensorium_images, device=device)
 
     # Apply the custom transform
     pretrain_transform = CustomTransform()
@@ -750,7 +769,7 @@ def evaluate_model(model, test_loader, device):
 
 
 def pretraining(model, train_loader, val_loader, epochs, optimizer, loss_fn, device):
-    print(f'shape in dataloader {next(iter(pretrain_train_loader))[0].shape}')
+    print(f'shape in dataloader {next(iter(train_loader))[0].shape}')
     # Define early stopping criteria
     early_stopping_patience = 5
     early_stopping_counter = 0
@@ -764,11 +783,11 @@ def pretraining(model, train_loader, val_loader, epochs, optimizer, loss_fn, dev
     lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
     for epoch in range(epochs):
         # Training loop
-        loss = my_train_epoch(pretrain_model, pretrain_train_loader, optimizer, loss_fn, device)
+        loss = my_train_epoch(pretrain_model, train_loader, optimizer, loss_fn, device)
         
         # Validation loop
         with torch.no_grad():
-            val_corrs = get_correlations(pretrain_model, pretrain_val_loader, device)
+            val_corrs = get_correlations(pretrain_model, val_loader, device)
         validation_correlation = val_corrs.mean()
         
         # Update learning rate schedule
@@ -967,6 +986,7 @@ def sta_wo_model(device, best, data_path_1, data_path_2= None, data_is_npy = Tru
 
     else:
         responses,_,_=load_mat_file(data_path_1)
+        #Returns responses in shape [n_neurons, n_images, n_timebins]
         responses = torch.tensor(np.sum(responses[:,:, index_start:index_end], axis=2).astype('float32')).to(device)
         images = torch.tensor(np.load(data_path_2)).to(device)
         images= torch.tensor(downscale_images_in_batches(images, batch_size=1)).to(device)
@@ -1082,48 +1102,3 @@ def plot_nth_image(train_loader,n):
         plt.show()
         break
 
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-def plot_avrg_response(images_path, response_path):
-    # Load Images to np.array
-    images = np.load(images_path)
-
-    # Load responses and preprocess them
-    responses, _, _ = load_mat_file(response_path)
-    responses = np.transpose(responses, (1, 2, 0))
-
-    # Look at mean data for neurons
-    responses_mean = np.mean(responses, axis=0, keepdims=True)
-
-    # Define the number of plots
-    num_plots = responses.shape[2]
-    neuron_indices = range(num_plots)
-
-    # Create a 3x5 grid of subplots
-    fig, axs = plt.subplots(int(np.ceil(float(num_plots)/5.0)),5, figsize=(15, 9))
-    axs = axs.flatten()  # Flatten the 2D array to 1D for easier iteration
-
-    # Create a custom legend patch
-    legend_patch = mpatches.Patch(color='gray', alpha=0.5, label='Image shown')
-
-    # Plot each neuron data
-    x = np.arange(0, 2000, 10)
-    for i, neuron_index in enumerate(neuron_indices):
-        if i < len(neuron_indices):  # Ensure we don't go out of bounds
-            neuron_mean = responses_mean[:, :, neuron_index]
-            axs[i].plot(x, neuron_mean[0, :])
-            axs[i].axvspan(750, 1250, color='gray', alpha=0.5)  # Add transparent gray tile
-            axs[i].set_title(f'Neuron {neuron_index + 1}')
-            axs[i].set_xlabel('Time (ms)')
-            axs[i].set_ylabel('Response')
-            # Add the legend to the first plot only to avoid repetition
-            if i == 0:
-                axs[i].legend(handles=[legend_patch])
-
-    # Remove empty subplots (if any)
-    for j in range(len(neuron_indices), len(axs)):
-        fig.delaxes(axs[j])
-
-    # Adjust layout
-    plt.tight_layout()
-    plt.show()
