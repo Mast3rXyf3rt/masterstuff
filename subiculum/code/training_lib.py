@@ -60,7 +60,7 @@ def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_load
     best_val_loss = float('-inf')
     for epoch in trange(epochs):
         # Training loop
-        loss = train_epoch(model, train_loader, optimizer, loss_fn, device)
+        loss = my_train_epoch(model, train_loader, optimizer, loss_fn, device)
         
         # Validation loop
         with torch.no_grad():

@@ -51,7 +51,7 @@ class NeuralDataset(Dataset):
         
         return image, response
     
-class NeuralDatasetSensorium_Pretraining(Dataset):
+class NeuralDatasetAwake(Dataset):
     def __init__(self, images, responses, transform=None):
         """
         Args:
@@ -63,8 +63,7 @@ class NeuralDatasetSensorium_Pretraining(Dataset):
         self.responses = responses
         self.transform = transform or Compose([
             ToPILImage(),
-            Resize((72, 128)),  # Resize images to 64x64
-            #Grayscale(num_output_channels=1),
+            Resize((128, 72)),  # Resize images to 64x64
             ToTensor(),        # Converts numpy.ndarray (H x W) to a torch.FloatTensor of shape (C x H x W)
             Normalize(mean=[0.456], std=[0.224])  # Adjust mean and std for single-channel
         ])  
@@ -263,7 +262,7 @@ def dataloader_from_npy_pretraining(root_dir, device):
 
     pretrain_train_ratio=0.8
     pretrain_val_ratio=0.1
-    pretrain_dataset = NeuralDatasetSensorium_Pretraining(sensorium_images, sensorium_responses_tensor)
+    pretrain_dataset = NeuralDatasetAwake(sensorium_images, sensorium_responses_tensor)
     pretrain_total_size = len(pretrain_dataset)
     pretrain_train_size = int(pretrain_train_ratio * pretrain_total_size)
     pretrain_val_size = int(pretrain_val_ratio * pretrain_total_size)
@@ -368,9 +367,12 @@ class GaussianReadout(nn.Module):
 """
 Defining the model
 """
-    
+def readout_input(layers, input_kern, hidden_kern, image_width, image_height):
+    input1=(image_width-input_kern+5)-(layers-1)*(hidden_kern-5)
+    input2=(image_height-input_kern+5)-(layers-1)*(hidden_kern-5)
+    return input1, input2
 class ConvModel(nn.Module):
-    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True, reg_weight=None, fact_input=None):
+    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True, reg_weight=None, image_width=64, image_height=64):
         super(ConvModel, self).__init__()
         
         self.conv_layers = nn.Sequential()
@@ -390,7 +392,7 @@ class ConvModel(nn.Module):
             self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
         else:
             self.readout = FullFactorized2d(
-                in_shape=(hidden_channels, fact_input, fact_input),  # Set the appropriate shape
+                in_shape=(hidden_channels,)+ readout_input(layers, input_kern, hidden_kern, image_width, image_height),  # Set the appropriate shape
                 outdims=output_dim,
                 bias=True,
                 spatial_and_feature_reg_weight=reg_weight or 1.0)
@@ -417,7 +419,7 @@ class DepthwiseSeparableConv(nn.Module):
         return out
     
 class DepthSepConvModel(nn.Module):
-    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True, reg_weight=None, fact_input=None):
+    def __init__(self, layers, input_kern, hidden_kern, hidden_channels, output_dim, spatial_scale = 0.1, std_scale = 0.5, gaussian_readout=True, reg_weight=None,image_width=64, image_height=64):
         super(DepthSepConvModel, self).__init__()
         
         self.conv_layers = nn.Sequential
@@ -431,13 +433,11 @@ class DepthSepConvModel(nn.Module):
             ]
             )
         self.core = nn.Sequential(*core_layers)
-        
-        # self.readout = FullGaussian2d((32, 18, 46), output_dim, bias=False)
         if gaussian_readout ==True:
             self.readout = GaussianReadout(output_dim, hidden_channels, spatial_scale=spatial_scale, std_scale=std_scale)
         else:
             self.readout = FullFactorized2d(
-                in_shape=(hidden_channels, fact_input, fact_input),  # Set the appropriate shape
+                in_shape=(hidden_channels,)+ readout_input(layers, input_kern, hidden_kern, image_width, image_height),  # Set the appropriate shape
                 outdims=output_dim,
                 bias=True,
                 spatial_and_feature_reg_weight=reg_weight or 1.0)
@@ -450,7 +450,6 @@ class DepthSepConvModel(nn.Module):
     def forward(self, x):
         x = self.core(x)
         x = self.readout(x)
-        
         return nn.functional.softplus(x)
 
 
@@ -485,6 +484,49 @@ def my_train_epoch(model, loader, optimizer, loss_fn,device):
         optimizer.step()
         train_loss += loss.item()
     return train_loss / len(loader)
+
+def debug_loss(outputs, responses, loss, batch_idx):
+    print(f"\nBatch {batch_idx}")
+    print(f"Output range: {outputs.min().item():.4f} to {outputs.max().item():.4f}")
+    print(f"Response range: {responses.min().item():.4f} to {responses.max().item():.4f}")
+    print(f"Loss: {loss.item():.4f}")
+    if loss < 0:
+        print("Warning: Negative loss encountered!")
+        print(f"Output sample: {outputs[:5].detach().cpu().numpy()}")
+        print(f"Response sample: {responses[:5].detach().cpu().numpy()}")
+    print(f"Output mean: {outputs.mean().item():.4f}, std: {outputs.std().item():.4f}")
+    print(f"Response mean: {responses.mean().item():.4f}, std: {responses.std().item():.4f}")
+
+def train_epoch_debugging(model, loader, optimizer, loss_fn, device, debug_frequency=10):
+    model.train()
+    train_loss = 0.0
+    
+    for batch_idx, (images, responses) in enumerate(loader):
+        images, responses = images.to(device), responses.to(device)
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = loss_fn(outputs, responses)
+        
+        # Debug information
+        if batch_idx % debug_frequency == 0:
+            debug_loss(outputs, responses, loss, batch_idx)
+        
+        # Check for NaN or Inf in outputs
+        if torch.isnan(outputs).any() or torch.isinf(outputs).any():
+            print(f"NaN or Inf detected in outputs at batch {batch_idx}")
+            return None  # Early exit if NaN or Inf is detected
+        
+        loss.backward()
+        
+        # Gradient clipping (optional, uncomment if needed)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
+        optimizer.step()
+        train_loss += loss.item()
+        
+    avg_loss = train_loss / len(loader)
+    print(f"\nAverage training loss: {avg_loss:.4f}")
+    return avg_loss
 
 def train_readout(model, train_loader, val_loader, num_epochs, optimizer, loss_fn, device):
     model.eval()  # Make sure the core is in eval mode
@@ -679,18 +721,38 @@ def oracle(model, model_state_path, device, test_loader):
 #     # Evaluate the model
 #     evaluate_model(model, test_loader, device)
 
-
 def find_duplicate_images(images):
     num_images = len(images)
-    duplicates = []
+    total_num=0
+    number_ims =0
+    sub5=0
+    sup5=0
+    seen = set()
     for i in range(num_images):
-        n=0
+        image_hash = hash(images[i].tobytes())
+        if image_hash in seen:
+            continue
+        else:
+            seen.add(image_hash)
+        my_list=set()
+        my_list.add(i)
+        n=1
         for j in range(i + 1, num_images):
             if np.array_equal(images[i], images[j]):
-                duplicates.append((i, j))
-                n=n+1
-        print(f"{n} duplicates found for images {i}")        
-    return duplicates
+                my_list.add(j)
+                n += 1
+        if n >1:
+            total_num+=n
+            number_ims+=1
+            if n > 5:
+                # print(f"{n-1} duplicates found for image {i} at")
+                # print(my_list)
+                sup5+=1
+            else:
+                sub5+=1
+    print(number_ims,float(total_num)/float(number_ims))
+    return total_num
+
 
 
 
@@ -1096,9 +1158,69 @@ def gradientRF(model, model_state_path, best_neurons, device):
 
 def plot_nth_image(train_loader,n):
     for images, _ in train_loader:
-        first_image = images[n].cpu().numpy().squeeze()
+        first_image = images[n].cpu().numpy().squeeze().transpose()
         plt.imshow(first_image, cmap='gray')
         plt.title("First Image in the Train Loader")
         plt.show()
         break
 
+def check_for_repeated_stims(stim_list):
+    '''
+    Takes stim_list as list of strings and returns tensor with booleans.
+    '''
+    # Count the occurrences of each string
+    occurrences = {}
+    for item in stim_list:
+        if item in occurrences:
+            occurrences[item] += 1
+        else:
+            occurrences[item] = 1
+    # Create the stim_boolean array based on the counts
+    stim_boolean = np.array([1 if occurrences[item] > 1 else 0 for item in stim_list])
+    # Convert stim_boolean to a PyTorch tensor
+    return stim_boolean
+
+from collections import defaultdict
+
+def oracle_prediction(test_responses,test_images, device):
+    responses_tensor = torch.tensor(test_responses, device=device)
+    oracle_prediction_tensor=torch.zeros(100,responses_tensor[0].shape[0])
+    predicted_response_tensor=torch.zeros(100,responses_tensor[0].shape[0])
+    for n in range(100):
+        # Compute mean of four responses
+        if not np.array_equal(test_images[5*n],test_images[5*n+1]) or torch.equal(responses_tensor[5*n],responses_tensor[5*n+1]):
+            print(n)
+            raise ValueError("Mistake: computing with not equal images, or exactly repeated response (unrealistic due to noise).")
+        oracle_prediction_tensor[n] = responses_tensor[5*n : 5*n+4].mean(dim=0)
+        predicted_response_tensor[n]=responses_tensor[5*n+4]
+    corr_tensor=corr(oracle_prediction_tensor,predicted_response_tensor,dim=0)
+    return corr_tensor
+
+
+
+
+
+
+
+def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None):
+    stim_boolean= check_for_repeated_stims(stim_list)
+    responses=preprocess_responses(responses, 50,120)
+    if ids is not None:
+        responses = responses[:,ids!=3]
+    # Separate rows based on stim_boolean_tensor
+    test_responses = responses[torch.tensor(stim_boolean) == 1]
+    training_validation_data = responses[torch.tensor(stim_boolean) == 0]
+    test_images=images[stim_boolean==1]
+    training_validation_images=images[stim_boolean==0]
+    data_set=NeuralDatasetAwake(training_validation_images,training_validation_data)
+    val_ratio=0.2
+    train_ratio=0.8
+    total_size = len(data_set)
+    train_size = int(train_ratio * total_size)
+    val_size = int(val_ratio * total_size)
+    train_dataset, val_dataset = random_split(data_set, [train_size, val_size])
+    test_dataset=NeuralDatasetAwake(test_images,test_responses)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    return train_loader, val_loader, test_loader

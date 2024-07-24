@@ -3,7 +3,7 @@ version: '3.4'
 services:
   dev:
     image: sensorium
-    container_name: flo_container    
+    container_name: flo_container 
     build:
       context: .
     volumes:
