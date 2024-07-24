@@ -489,11 +489,11 @@ def debug_loss(outputs, responses, loss, batch_idx):
     print(f"\nBatch {batch_idx}")
     print(f"Output range: {outputs.min().item():.4f} to {outputs.max().item():.4f}")
     print(f"Response range: {responses.min().item():.4f} to {responses.max().item():.4f}")
-    print(f"Loss: {loss.item():.4f}")
+    #print(f"Loss: {loss.item():.4f}")
     if loss < 0:
         print("Warning: Negative loss encountered!")
-        print(f"Output sample: {outputs[:5].detach().cpu().numpy()}")
-        print(f"Response sample: {responses[:5].detach().cpu().numpy()}")
+        #print(f"Output sample: {outputs[:5].detach().cpu().numpy()}")
+        #print(f"Response sample: {responses[:5].detach().cpu().numpy()}")
     print(f"Output mean: {outputs.mean().item():.4f}, std: {outputs.std().item():.4f}")
     print(f"Response mean: {responses.mean().item():.4f}, std: {responses.std().item():.4f}")
 
@@ -1208,8 +1208,8 @@ def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None):
     if ids is not None:
         responses = responses[:,ids!=3]
     # Separate rows based on stim_boolean_tensor
-    test_responses = responses[torch.tensor(stim_boolean) == 1]
-    training_validation_data = responses[torch.tensor(stim_boolean) == 0]
+    test_responses = responses[torch.tensor(stim_boolean) == 1]/70.0
+    training_validation_data = responses[torch.tensor(stim_boolean) == 0]/70.0
     test_images=images[stim_boolean==1]
     training_validation_images=images[stim_boolean==0]
     data_set=NeuralDatasetAwake(training_validation_images,training_validation_data)
