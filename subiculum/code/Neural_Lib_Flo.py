@@ -721,37 +721,6 @@ def oracle(model, model_state_path, device, test_loader):
 #     # Evaluate the model
 #     evaluate_model(model, test_loader, device)
 
-def find_duplicate_images(images):
-    num_images = len(images)
-    total_num=0
-    number_ims =0
-    sub5=0
-    sup5=0
-    seen = set()
-    for i in range(num_images):
-        image_hash = hash(images[i].tobytes())
-        if image_hash in seen:
-            continue
-        else:
-            seen.add(image_hash)
-        my_list=set()
-        my_list.add(i)
-        n=1
-        for j in range(i + 1, num_images):
-            if np.array_equal(images[i], images[j]):
-                my_list.add(j)
-                n += 1
-        if n >1:
-            total_num+=n
-            number_ims+=1
-            if n > 5:
-                # print(f"{n-1} duplicates found for image {i} at")
-                # print(my_list)
-                sup5+=1
-            else:
-                sub5+=1
-    print(number_ims,float(total_num)/float(number_ims))
-    return total_num
 
 
 
@@ -1182,19 +1151,7 @@ def check_for_repeated_stims(stim_list):
 
 from collections import defaultdict
 
-def oracle_prediction(test_responses,test_images, device):
-    responses_tensor = torch.tensor(test_responses, device=device)
-    oracle_prediction_tensor=torch.zeros(100,responses_tensor[0].shape[0])
-    predicted_response_tensor=torch.zeros(100,responses_tensor[0].shape[0])
-    for n in range(100):
-        # Compute mean of four responses
-        if not np.array_equal(test_images[5*n],test_images[5*n+1]) or torch.equal(responses_tensor[5*n],responses_tensor[5*n+1]):
-            print(n)
-            raise ValueError("Mistake: computing with not equal images, or exactly repeated response (unrealistic due to noise).")
-        oracle_prediction_tensor[n] = responses_tensor[5*n : 5*n+4].mean(dim=0)
-        predicted_response_tensor[n]=responses_tensor[5*n+4]
-    corr_tensor=corr(oracle_prediction_tensor,predicted_response_tensor,dim=0)
-    return corr_tensor
+
 
 
 
