@@ -482,7 +482,7 @@ def my_train_epoch(model, loader, optimizer, loss_fn,device):
         #     print(f"Responses: {responses}")
         loss.backward()
         optimizer.step()
-        train_loss += loss.item()
+        train_loss = train_loss + loss.item()
     return train_loss / len(loader)
 
 def debug_loss(outputs, responses, loss, batch_idx):
@@ -1159,14 +1159,21 @@ from collections import defaultdict
 
 
 
-def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None):
+def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None, cell_type=None, idx=None):
     stim_boolean= check_for_repeated_stims(stim_list)
-    responses=preprocess_responses(responses, 50,120)
-    if ids is not None:
+    responses=preprocess_responses(responses, 20,150)
+    if ids is not None and cell_type is not None:
+        responses= responses[:,ids!=3]
+        idx = idx[ids!=3]
+        responses = responses[:,idx == cell_type]
+    elif ids is not None:
         responses = responses[:,ids!=3]
     # Separate rows based on stim_boolean_tensor
-    test_responses = responses[torch.tensor(stim_boolean) == 1]/70.0
-    training_validation_data = responses[torch.tensor(stim_boolean) == 0]/70.0
+    elif cell_type is not None:
+        responses = responses[:,idx == cell_type]
+
+    test_responses = responses[torch.tensor(stim_boolean) == 1]/100.0
+    training_validation_data = responses[torch.tensor(stim_boolean) == 0]/100.0
     test_images=images[stim_boolean==1]
     training_validation_images=images[stim_boolean==0]
     data_set=NeuralDatasetAwake(training_validation_images,training_validation_data)

@@ -47,10 +47,15 @@ def evaluate_model(model, test_loader, device):
     
     return all_preds, all_resps
 
-def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_loader, device, save_model= False, lr=1e-1, gamma=1e-3, path_for_saving=None, early_stopping=True):
+def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_loader, device, save_model= False, lr=1e-1, gamma=1e-3, path_for_saving=None, early_stopping=True, Poisson=True):
     # Define loss function and optimizer
-    poisson_loss = PoissonLoss(bias=1e-7)
-    loss_fn = lambda outputs, targets: poisson_loss(outputs, targets) + gamma * model.regularizer()
+    if Poisson == True:   
+        poisson_loss = PoissonLoss(bias=1e-7)
+        loss_fn = lambda outputs, targets: poisson_loss(outputs, targets) + gamma * model.regularizer()
+    else:
+        mse_loss = nn.MSELoss()
+        loss_fn =lambda outputs,targets: mse_loss(outputs,targets) + gamma * model.regularizer()
+    
     optimizer = torch.optim.Adam(model.parameters(), lr)
 
     # Define the learning rate schedule
