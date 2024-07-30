@@ -5,6 +5,6 @@ RUN python3.8 -m pip --no-cache-dir install boto3 wandb nnfabrik neuralpredictor
 RUN python3.8 -m pip install gdown
 # ADD . /project
 # RUN python3.8 -m pip install -e /project
-WORKDIR /notebooks
+WORKDIR /subiculum
 
 

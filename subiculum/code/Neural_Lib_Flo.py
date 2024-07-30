@@ -1176,7 +1176,7 @@ def soft_normalize(data: torch.Tensor, alpha: float = 1.0) -> torch.Tensor:
     # Assuming data shape is (n_stimuli, n_neurons)
     min_vals, _ = data.min(dim=0, keepdim=True)
     max_vals, _ = data.max(dim=0, keepdim=True)
-    return (data - min_vals) / (max_vals - min_vals + 1)
+    return (data - min_vals) / (max_vals - min_vals + 1e-8)
 
 def normalize_spike_counts(data: torch.Tensor, method: str = 'soft') -> torch.Tensor:
     if method == 'minmax':
