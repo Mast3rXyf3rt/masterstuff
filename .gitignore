@@ -1,7 +1,9 @@
 notebooks/
 notebooks/wandb
 notebooks/models
-subiculum
+subiculum/data
+subiculum/data_awake
+subiculum/new_data
 notebooks/__pycache__
 data/
 /project/subiculum/code/__pycache__
