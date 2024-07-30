@@ -1105,24 +1105,27 @@ def get_last_conv_output_shape(model, input_shape):
     
     return get_output_shape(last_conv_layer, input_shape)
 
-def gradientRF(model, model_state_path, best_neurons, device):
+def gradientRF(model, model_state_path, best_neurons, device,width,height):
     state_dict = torch.load(model_state_path)
     model.load_state_dict(state_dict)
     model=model.to(device)
     rfs = []
-    for i in best_neurons[:12]:
-        x = torch.zeros(1,1,64,64).to(device)
+    for i in best_neurons:
+        x = torch.zeros(1,1,width,height).to(device)
         x.requires_grad = True
         r = model(x)
         r[0,i].backward()
         rfs.append(x.grad.cpu().numpy().squeeze())
-    
-    with sns.axes_style('white'):
-        fig, ax = plt.subplots(4, 3, figsize=(12,12))
-        for i, rf, a in zip(range(len(rfs)), rfs, ax.flatten()):
-            a.imshow(rf.squeeze(), cmap = 'gray')
-            a.axis('off')
-            a.set_title(f'RF neuron {best_neurons[i]}')
+    if len(best_neurons)==1:
+        plt.imshow(rfs[0].squeeze().transpose(),cmap='gray')
+        plt.axis('off')
+    else:
+        with sns.axes_style('white'):
+            fig, ax = plt.subplots(4, 3, figsize=(12,12))
+            for i, rf, a in zip(range(len(rfs)), rfs, ax.flatten()):
+                a.imshow(rf.squeeze().transpose(), cmap = 'gray')
+                a.axis('off')
+                a.set_title(f'RF neuron {best_neurons[i]}')
 
 
 def plot_nth_image(train_loader,n):
@@ -1152,8 +1155,45 @@ def check_for_repeated_stims(stim_list):
 from collections import defaultdict
 
 
+def minmax_scale_per_neuron(data: torch.Tensor) -> torch.Tensor:
+    # Assuming data shape is (n_stimuli, n_neurons)
+    min_vals, _ = data.min(dim=0, keepdim=True)
+    max_vals, _ = data.max(dim=0, keepdim=True)
+    return (data - min_vals) / (max_vals - min_vals + 1e-8)
 
+def log_transform(data: torch.Tensor) -> torch.Tensor:
+    return torch.log1p(data)  # log1p is log(1+x) to handle zero counts
 
+def sqrt_transform(data: torch.Tensor) -> torch.Tensor:
+    return torch.sqrt(data)
+
+def normalize_by_mean_rate(data: torch.Tensor) -> torch.Tensor:
+    # Assuming data shape is (n_stimuli, n_neurons)
+    mean_rates = data.mean(dim=0, keepdim=True)
+    return data / (mean_rates + 1e-8)
+
+def soft_normalize(data: torch.Tensor, alpha: float = 1.0) -> torch.Tensor:
+    # Assuming data shape is (n_stimuli, n_neurons)
+    min_vals, _ = data.min(dim=0, keepdim=True)
+    max_vals, _ = data.max(dim=0, keepdim=True)
+    return (data - min_vals) / (max_vals - min_vals + 1)
+
+def normalize_spike_counts(data: torch.Tensor, method: str = 'soft') -> torch.Tensor:
+    if method == 'minmax':
+        return minmax_scale_per_neuron(data)
+    elif method == 'log':
+        return log_transform(data)
+    elif method == 'sqrt':
+        return sqrt_transform(data)
+    elif method == 'mean_rate':
+        return normalize_by_mean_rate(data)
+    elif method == 'soft':
+        return soft_normalize(data, alpha=1.0)
+    else:
+        raise ValueError("Unknown normalization method")
+
+# Usage example
+# normalized_data = normalize_spike_counts(your_tensor_data, method='soft')
 
 
 
@@ -1161,7 +1201,8 @@ from collections import defaultdict
 
 def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None, cell_type=None, idx=None):
     stim_boolean= check_for_repeated_stims(stim_list)
-    responses=preprocess_responses(responses, 20,150)
+    responses=minmax_scale_per_neuron(preprocess_responses(responses, 50,120))
+
     if ids is not None and cell_type is not None:
         responses= responses[:,ids!=3]
         idx = idx[ids!=3]
@@ -1172,8 +1213,8 @@ def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None, c
     elif cell_type is not None:
         responses = responses[:,idx == cell_type]
 
-    test_responses = responses[torch.tensor(stim_boolean) == 1]/100.0
-    training_validation_data = responses[torch.tensor(stim_boolean) == 0]/100.0
+    test_responses = responses[torch.tensor(stim_boolean) == 1]
+    training_validation_data = responses[torch.tensor(stim_boolean) == 0]
     test_images=images[stim_boolean==1]
     training_validation_images=images[stim_boolean==0]
     data_set=NeuralDatasetAwake(training_validation_images,training_validation_data)
@@ -1188,3 +1229,4 @@ def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None, c
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader, test_loader
+

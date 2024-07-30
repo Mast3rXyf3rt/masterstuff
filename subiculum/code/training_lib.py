@@ -21,12 +21,12 @@ import wandb
 from tqdm.notebook import trange, tqdm
 
 
-def evaluate_model(model, test_loader, device):
+def evaluate_model(model, test_loader, device,loss):
     model.eval()
     test_loss = 0.0
     all_preds = []
     all_resps = []
-    loss_fn = nn.PoissonNLLLoss(log_input=False)
+    loss_fn = loss
     
     with torch.no_grad():
         for images, responses in test_loader:
@@ -45,9 +45,9 @@ def evaluate_model(model, test_loader, device):
     correlation = get_correlations(model, test_loader, device)
     print(f'Test Correlation: {correlation.mean():.4f}')  # Print mean correlation
     
-    return all_preds, all_resps
+    return all_preds, all_resps, correlation.mean(), test_loss
 
-def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_loader, device, save_model= False, lr=1e-1, gamma=1e-3, path_for_saving=None, early_stopping=True, Poisson=True):
+def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_loader, device, save_model= False, lr=1e-1, gamma=1e-3, path_for_saving=None, early_stopping=True, Poisson=True, weight_decay=0):
     # Define loss function and optimizer
     if Poisson == True:   
         poisson_loss = PoissonLoss(bias=1e-7)
@@ -56,10 +56,10 @@ def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_load
         mse_loss = nn.MSELoss()
         loss_fn =lambda outputs,targets: mse_loss(outputs,targets) + gamma * model.regularizer()
     
-    optimizer = torch.optim.Adam(model.parameters(), lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr, weight_decay=weight_decay)
 
     # Define the learning rate schedule
-    lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3, verbose=True)
+    lr_scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, verbose=True)
     early_stopping_patience = 5
     early_stopping_counter = 0
     best_val_loss = float('-inf')
@@ -92,7 +92,7 @@ def training_and_eval_with_lr(model, epochs, train_loader, test_loader, val_load
         torch.save(model.state_dict(), path_for_saving)
         print("model saved as " + path_for_saving)
     # Evaluate the model
-    _,_ = evaluate_model(model, test_loader, device)
+    _,_,_,_ = evaluate_model(model, test_loader, device,loss_fn)
 
 
 def pretraining(model, train_loader, val_loader, epochs, optimizer, loss_fn, device):
