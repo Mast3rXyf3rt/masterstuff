@@ -1212,10 +1212,10 @@ def dataloader_with_repeats(responses,images, stim_list, batch_size, ids=None, c
     # Separate rows based on stim_boolean_tensor
     elif cell_type is not None:
         responses = responses[:,idx == cell_type]
-
     test_responses = responses[torch.tensor(stim_boolean) == 1]
     training_validation_data = responses[torch.tensor(stim_boolean) == 0]
     test_images=images[stim_boolean==1]
+    print(test_images.dtype)
     training_validation_images=images[stim_boolean==0]
     data_set=NeuralDatasetAwake(training_validation_images,training_validation_data)
     val_ratio=0.2
