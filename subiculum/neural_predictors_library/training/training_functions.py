@@ -8,20 +8,42 @@ This Library contains functions for different forms of training:
 """
 import torch
 import numpy as np
-import scipy.io
-import os
-import torch.nn.functional as F
 import torch.nn as nn
-import warnings
 from neuralpredictors.measures.modules import PoissonLoss
-import seaborn as sns
-import matplotlib.pyplot as plt
 from neural_predictors_library.correlation import get_correlations
-import wandb
 from tqdm.notebook import trange, tqdm
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+def train_epoch(model, loader, optimizer, loss_fn, device):
+    model.train()
+    for images, responses in loader:
+        images, responses = images.to(device), responses.to(device) 
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = loss_fn(outputs, responses)
+        loss.backward()
+        optimizer.step()
+    return loss
 
+# train_epoch returns the loss of the last item in the batch, this seems very prone to errors due to outliers.
+
+def my_train_epoch(model, loader, optimizer, loss_fn,device):
+    model.train()
+    train_loss = 0.0
+    for images, responses in loader:
+        images, responses = images.to(device), responses.to(device)  # Move data to the appropriate device
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = loss_fn(outputs, responses)
+        # # The following is for debugging (I had negative losses on the Poisson loss - was due to not normalizing my target data which had very different ranges for the neurons)
+        # if loss.item() < 0:
+        #     print(f"Negative loss detected: {loss.item()}")
+        #     print(f"Outputs: {outputs}")
+        #     print(f"Responses: {responses}")
+        loss.backward()
+        optimizer.step()
+        train_loss = train_loss + loss.item()
+    return train_loss / len(loader)
 
 
 
