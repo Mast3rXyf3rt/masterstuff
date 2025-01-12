@@ -1,8 +1,7 @@
-import Neural_Lib_Flo as nlb
+from modules_simple import Neural_Lib_Flo as nlb
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.patches as mpatches
-import Neural_Lib_Flo as nlb
 import torch
 import tqdm
 
