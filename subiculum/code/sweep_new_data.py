@@ -10,16 +10,16 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import wandb
 from nnfabrik.utility.nn_helpers import set_random_seed
 import sys
-import training_lib as tl
+import modules_simple.training_lib as tl
 import scipy.io
-import data_analysis as da
+import modules_simple.data_analysis as da
 #Set device
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Import functions and classes from the libraries
 from neuralpredictors.measures.modules import PoissonLoss 
-import Neural_Lib_Flo as nlb
+import modules_simple.Neural_Lib_Flo as nlb
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

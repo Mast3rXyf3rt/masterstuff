@@ -1,6 +1,4 @@
 notebooks/
-notebooks/wandb
-notebooks/models
 subiculum/data
 subiculum/data_awake
 subiculum/new_data
@@ -11,6 +9,7 @@ subiculum/code/models
 code/models
 wandb/
 /project/subiculum/code/models
+/project/subiculum/neural_predictors_library/wandb_module/KEY.py
 vscode-server
 .env
 git 
