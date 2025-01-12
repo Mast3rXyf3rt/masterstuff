@@ -1,3 +1,7 @@
 # This Repo can be used to predict neural responses to image stimuli.
-This library was specifically written for data in mat files. As I, in the beginning, shared memory with other users and frequently ran into runtime errors I chose to convert the images files to npy files locally. Therefore, the loader expect only all files except the image files in mat format.
-You will, basically, find three different models + 2 readout options to train. A simple CNN, a depth separable CNN, an even simpler linear model and the two readouts (explained in the code).
+1. It is mostly based on the neural predictors repo from the Sinz lab.
+2. I planned to make this entire thing more structured: the modules_unfinished are this unfinished attempt.
+3. The modules_simple contain pretty much everything I used (sorry for the boiler plate code...).
+4. I trained on sensorium data, data from awake mice and data from anesthetized mice, from subiculum and V1.
+5. The notebooks are hopefully pretty self-explanatory, I am trying to comment the code better in the future.
+
