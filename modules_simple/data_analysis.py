@@ -1,4 +1,4 @@
-from modules_simple import Neural_Lib_Flo as nlb
+from modules_simple import Neural_Lib as nlb
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.patches as mpatches
