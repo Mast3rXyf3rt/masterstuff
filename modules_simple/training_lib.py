@@ -16,7 +16,7 @@ import warnings
 from neuralpredictors.measures.modules import PoissonLoss
 import seaborn as sns
 import matplotlib.pyplot as plt
-from modules_simple.Neural_Lib_Flo import *
+from modules_simple.Neural_Lib import *
 import wandb
 from tqdm.notebook import trange, tqdm
 
