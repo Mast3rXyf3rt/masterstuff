@@ -19,7 +19,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Import functions and classes from the libraries
 from neuralpredictors.measures.modules import PoissonLoss 
-import modules_simple.Neural_Lib_Flo as nlb
+import modules_simple.Neural_Lib as nlb
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
