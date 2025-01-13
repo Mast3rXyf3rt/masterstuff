@@ -4,4 +4,5 @@
 3. The modules_simple contain pretty much everything I used (sorry for the boilerplate code...).
 4. I trained on sensorium data, data from awake mice and data from anesthetized mice, from subiculum and V1
 
+NB: I did not include the data or the stored weights in the repo. 
 
